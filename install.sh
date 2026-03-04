@@ -9,6 +9,10 @@ set -euo pipefail
 #   curl -fsSL ... | bash -s -- --force
 #   curl -fsSL ... | bash -s -- --modules=directory,model,context
 #   curl -fsSL ... | bash -s -- --all
+#   curl -fsSL ... | bash -s -- --update
+#   curl -fsSL ... | bash -s -- --help
+
+STATUSLINE_VERSION="1.0.0"
 
 REPO_URL="https://raw.githubusercontent.com/educlopez/claude-statusline/main"
 SCRIPT_NAME="statusline-command.sh"
@@ -21,32 +25,72 @@ MOD_DESC_3="Context        ░░░░░░░░░░░░░░░ 12%"
 MOD_DESC_4="Usage quota    Max ██████░░░░ 58% 3h42m"
 MOD_DESC_5="Git status     (main | 3 files +42 -8)"
 
-# Parse flags
-FORCE=false
-SKIP_MENU=false
-MODULES_ARG=""
+# ─── Phase 1.1: Color setup with NO_COLOR / TTY detection ───
 
-for arg in "$@"; do
-    case "$arg" in
-        --force) FORCE=true ;;
-        --all)   SKIP_MENU=true; MODULES_ARG="directory,model,context,usage,git" ;;
-        --modules=*) SKIP_MENU=true; MODULES_ARG="${arg#--modules=}" ;;
-    esac
-done
+RED=''
+GREEN=''
+YELLOW=''
+CYAN=''
+GRAY=''
+BOLD=''
+NC=''
 
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-CYAN='\033[0;36m'
-GRAY='\033[0;90m'
-BOLD='\033[1m'
-NC='\033[0m'
+setup_colors() {
+    # Respect NO_COLOR (https://no-color.org/) and non-TTY stdout
+    if [ -n "${NO_COLOR:-}" ] || [ ! -t 1 ]; then
+        RED=''
+        GREEN=''
+        YELLOW=''
+        CYAN=''
+        GRAY=''
+        BOLD=''
+        NC=''
+    else
+        RED='\033[0;31m'
+        GREEN='\033[0;32m'
+        YELLOW='\033[0;33m'
+        CYAN='\033[0;36m'
+        GRAY='\033[0;90m'
+        BOLD='\033[1m'
+        NC='\033[0m'
+    fi
+}
+
+setup_colors
+
+# ─── Logging helpers ───
 
 info()  { echo -e "${CYAN}[info]${NC} $1"; }
 ok()    { echo -e "${GREEN}[ok]${NC} $1"; }
 warn()  { echo -e "${YELLOW}[warn]${NC} $1"; }
 error() { echo -e "${RED}[error]${NC} $1"; exit 1; }
+
+# ─── Phase 1.2: Trap-based cleanup with file tracking ───
+
+CREATED_FILES=()
+INSTALL_SUCCESS=false
+
+track_file() {
+    CREATED_FILES+=("$1")
+}
+
+cleanup() {
+    if [ "$INSTALL_SUCCESS" = true ]; then
+        return
+    fi
+    # Non-zero exit: restore backups and remove created files
+    for f in "${CREATED_FILES[@]+"${CREATED_FILES[@]}"}"; do
+        if [ -f "${f}.backup" ]; then
+            mv "${f}.backup" "$f" 2>/dev/null || true
+        elif [ -f "$f" ]; then
+            rm -f "$f" 2>/dev/null || true
+        fi
+    done
+}
+
+trap cleanup EXIT
+
+# ─── Module helpers ───
 
 get_mod_desc() {
     case "$1" in
@@ -62,16 +106,143 @@ get_mod_name() {
     esac
 }
 
-# --- Prerequisites ---
-info "Checking prerequisites..."
+# ─── Phase 2.1: --help flag ───
+
+show_help() {
+    cat <<HELPEOF
+Claude Statusline v${STATUSLINE_VERSION} — A customizable statusline for Claude Code
+
+Usage:
+  curl -fsSL https://raw.githubusercontent.com/educlopez/claude-statusline/main/install.sh | bash
+  curl -fsSL ... | bash -s -- [OPTIONS]
+
+Options:
+  --help, -h         Show this help message and exit
+  --version          Show version and exit
+  --force            Overwrite existing installation (script, config, and settings)
+  --update           Re-download the statusline script only (preserves config and settings)
+  --all              Install all modules without showing the interactive menu
+  --modules=LIST     Install specific modules (comma-separated, no spaces)
+                     Available modules: directory, model, context, usage, git
+
+Examples:
+  # Interactive install (choose modules from menu)
+  curl -fsSL .../install.sh | bash
+
+  # Install all modules non-interactively
+  curl -fsSL .../install.sh | bash -s -- --all
+
+  # Install only directory and model modules
+  curl -fsSL .../install.sh | bash -s -- --modules=directory,model
+
+  # Update the statusline script without changing config
+  curl -fsSL .../install.sh | bash -s -- --update
+
+  # Force overwrite an existing installation
+  curl -fsSL .../install.sh | bash -s -- --force
+
+Modules:
+  directory    Show current project directory name
+  model        Show active Claude model (e.g. Opus 4.6)
+  context      Show context window usage as a progress bar
+  usage        Show usage quota with remaining time
+  git          Show git branch, changed files, and diff stats
+
+Uninstall:
+  curl -fsSL https://raw.githubusercontent.com/educlopez/claude-statusline/main/uninstall.sh | bash
+HELPEOF
+    exit 0
+}
+
+# ─── Parse flags ───
+
+FORCE=false
+SKIP_MENU=false
+MODULES_ARG=""
+UPDATE_MODE=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --help|-h) show_help ;;
+        --force)   FORCE=true ;;
+        --all)     SKIP_MENU=true; MODULES_ARG="directory,model,context,usage,git" ;;
+        --modules=*) SKIP_MENU=true; MODULES_ARG="${arg#--modules=}" ;;
+        --update)  UPDATE_MODE=true; SKIP_MENU=true ;;
+        --version) echo "claude-statusline v$STATUSLINE_VERSION"; exit 0 ;;
+    esac
+done
+
+# ─── Phase 1.3: Step counter ───
+
+CURRENT_STEP=0
+if [ "$UPDATE_MODE" = true ]; then
+    TOTAL_STEPS=3
+else
+    TOTAL_STEPS=6
+fi
+
+step() {
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    info "[${CURRENT_STEP}/${TOTAL_STEPS}] $1"
+}
+
+# ─── Phase 3.1: Pre-flight validation helpers ───
+
+check_writable() {
+    local target="$1"
+    if [ -d "$target" ]; then
+        if [ ! -w "$target" ]; then
+            error "Directory is not writable: $target"
+        fi
+    else
+        # Check parent directory
+        local parent
+        parent="$(dirname "$target")"
+        if [ -d "$parent" ] && [ ! -w "$parent" ]; then
+            error "Parent directory is not writable: $parent"
+        fi
+    fi
+}
+
+validate_json() {
+    local file="$1"
+    if [ -f "$file" ]; then
+        if ! jq empty "$file" 2>/dev/null; then
+            error "Invalid JSON in $file — fix it manually or remove it and re-run the installer"
+        fi
+    fi
+}
+
+# ─── Phase 3.3: Smart jq install hints ───
+
+suggest_jq_install() {
+    local hint="install jq from https://jqlang.github.io/jq/download/"
+    if command -v brew >/dev/null 2>&1; then
+        hint="brew install jq"
+    elif command -v apt-get >/dev/null 2>&1; then
+        hint="sudo apt-get install -y jq"
+    elif command -v dnf >/dev/null 2>&1; then
+        hint="sudo dnf install -y jq"
+    elif command -v pacman >/dev/null 2>&1; then
+        hint="sudo pacman -S jq"
+    elif command -v apk >/dev/null 2>&1; then
+        hint="apk add jq"
+    fi
+    error "jq is required — install it with: $hint"
+}
+
+# ─── Phase 4.1: Step — Prerequisites ───
+
+step "Checking prerequisites..."
 
 command -v bash >/dev/null 2>&1 || error "bash is required"
 command -v curl >/dev/null 2>&1 || error "curl is required — install it first"
-command -v jq   >/dev/null 2>&1 || error "jq is required — install it with: brew install jq (macOS) or apt install jq (Linux)"
+command -v jq   >/dev/null 2>&1 || suggest_jq_install
 
 ok "All prerequisites found (bash, curl, jq)"
 
-# --- Resolve config directory ---
+# ─── Resolve config directory ───
+
 config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 config_dir="${config_dir/#\~/$HOME}"
 settings_file="$config_dir/settings.json"
@@ -80,7 +251,55 @@ statusline_config="$config_dir/.statusline-config.json"
 
 info "Claude config directory: $config_dir"
 
-# --- Determine selected modules ---
+# ─── Phase 3.1: Pre-flight validation ───
+
+step "Validating environment..."
+
+check_writable "$config_dir"
+validate_json "$settings_file"
+
+ok "Environment validated"
+
+# ─── Phase 2.2: --update mode ───
+
+if [ "$UPDATE_MODE" = true ]; then
+    # Update mode: re-download script only, preserve config and settings
+    if [ ! -f "$script_dest" ]; then
+        warn "No prior installation found at $script_dest"
+        warn "Consider running a full install instead (without --update)"
+    fi
+
+    step "Downloading latest statusline script..."
+    mkdir -p "$config_dir"
+    curl -fsSL "$REPO_URL/statusline.sh" -o "$script_dest"
+    chmod +x "$script_dest"
+    track_file "$script_dest"
+    ok "Script updated at $script_dest"
+
+    # ─── Phase 3.2: Claude Code process detection ───
+    if command -v pgrep >/dev/null 2>&1; then
+        if pgrep -f "claude" >/dev/null 2>&1 || pgrep -x "claude" >/dev/null 2>&1; then
+            echo ""
+            warn "${BOLD}Claude Code appears to be running.${NC}"
+            warn "Restart Claude Code for changes to take effect."
+            echo ""
+        fi
+    fi
+
+    INSTALL_SUCCESS=true
+    echo ""
+    echo -e "${GREEN}Claude Statusline v${STATUSLINE_VERSION} updated successfully!${NC}"
+    echo ""
+    echo "  Updated: $script_dest"
+    echo "  Config and settings were preserved."
+    echo ""
+    echo "  Restart Claude Code to see the updated statusline."
+    echo ""
+    exit 0
+fi
+
+# ─── Determine selected modules ───
+
 SELECTED_MODULES=""
 
 if [ "$SKIP_MENU" = true ] && [ -n "$MODULES_ARG" ]; then
@@ -101,18 +320,18 @@ elif [ "$SKIP_MENU" = false ]; then
 
         get_en() {
             case "$1" in
-                1) echo $en_1 ;; 2) echo $en_2 ;; 3) echo $en_3 ;;
-                4) echo $en_4 ;; 5) echo $en_5 ;;
+                1) echo "$en_1" ;; 2) echo "$en_2" ;; 3) echo "$en_3" ;;
+                4) echo "$en_4" ;; 5) echo "$en_5" ;;
             esac
         }
 
         toggle() {
             case "$1" in
-                1) if [ $en_1 -eq 1 ]; then en_1=0; else en_1=1; fi ;;
-                2) if [ $en_2 -eq 1 ]; then en_2=0; else en_2=1; fi ;;
-                3) if [ $en_3 -eq 1 ]; then en_3=0; else en_3=1; fi ;;
-                4) if [ $en_4 -eq 1 ]; then en_4=0; else en_4=1; fi ;;
-                5) if [ $en_5 -eq 1 ]; then en_5=0; else en_5=1; fi ;;
+                1) if [ "$en_1" -eq 1 ]; then en_1=0; else en_1=1; fi ;;
+                2) if [ "$en_2" -eq 1 ]; then en_2=0; else en_2=1; fi ;;
+                3) if [ "$en_3" -eq 1 ]; then en_3=0; else en_3=1; fi ;;
+                4) if [ "$en_4" -eq 1 ]; then en_4=0; else en_4=1; fi ;;
+                5) if [ "$en_5" -eq 1 ]; then en_5=0; else en_5=1; fi ;;
             esac
         }
 
@@ -133,6 +352,7 @@ elif [ "$SKIP_MENU" = false ]; then
             echo -e "  Toggle: enter number (e.g. ${BOLD}4${NC}). Accept: ${BOLD}Enter${NC}. All: ${BOLD}a${NC}"
         }
 
+        # ─── Phase 1.4: ANSI escapes instead of tput ───
         MENU_LINES=10
         draw_menu
 
@@ -149,16 +369,16 @@ elif [ "$SKIP_MENU" = false ]; then
                     ;;
                 a|A)
                     en_1=1; en_2=1; en_3=1; en_4=1; en_5=1
-                    # Redraw
+                    # Redraw using ANSI escapes (Phase 1.4)
                     for _ in $(seq 1 $((MENU_LINES + 1))); do
-                        tput cuu1 2>/dev/null && tput el 2>/dev/null || true
+                        printf '\033[A\033[2K' 2>/dev/null || true
                     done
                     draw_menu
                     ;;
                 [1-5])
                     toggle "$choice"
                     for _ in $(seq 1 $((MENU_LINES + 1))); do
-                        tput cuu1 2>/dev/null && tput el 2>/dev/null || true
+                        printf '\033[A\033[2K' 2>/dev/null || true
                     done
                     draw_menu
                     ;;
@@ -200,26 +420,36 @@ fi
 echo ""
 info "Selected modules: $(echo "$SELECTED_MODULES" | tr ',' ' ')"
 
-# --- Download statusline script ---
+# ─── Step — Download statusline script ───
+
+step "Downloading statusline script..."
+
 if [ -f "$script_dest" ] && [ "$FORCE" = false ]; then
     warn "Statusline script already exists at $script_dest"
     warn "Use --force to overwrite, or run: curl ... | bash -s -- --force"
     echo ""
     info "Skipping script download (existing file preserved)"
 else
-    info "Downloading statusline script..."
     mkdir -p "$config_dir"
     curl -fsSL "$REPO_URL/statusline.sh" -o "$script_dest"
     chmod +x "$script_dest"
+    track_file "$script_dest"
     ok "Script installed to $script_dest"
 fi
 
-# --- Write module config ---
+# ─── Step — Write module config ───
+
+step "Writing module configuration..."
+
 modules_json=$(echo "$SELECTED_MODULES" | tr ',' '\n' | jq -R . | jq -s '{modules: .}')
 echo "$modules_json" > "$statusline_config"
+track_file "$statusline_config"
 ok "Module config saved to $statusline_config"
 
-# --- Configure settings.json ---
+# ─── Step — Configure settings.json ───
+
+step "Configuring settings.json..."
+
 statusline_setting="{\"type\":\"command\",\"command\":\"bash $script_dest\"}"
 
 if [ -f "$settings_file" ]; then
@@ -230,17 +460,33 @@ if [ -f "$settings_file" ]; then
         cp "$settings_file" "$settings_file.backup"
         info "Backed up settings.json to settings.json.backup"
         jq --argjson sl "$statusline_setting" '.statusLine = $sl' "$settings_file.backup" > "$settings_file"
+        track_file "$settings_file"
         ok "Updated settings.json with statusLine configuration"
     fi
 else
     mkdir -p "$config_dir"
     jq -n --argjson sl "$statusline_setting" '{statusLine: $sl}' > "$settings_file"
+    track_file "$settings_file"
     ok "Created settings.json with statusLine configuration"
 fi
 
-# --- Done ---
+# ─── Step — Done ───
+
+step "Finishing up..."
+
+# ─── Phase 3.2: Claude Code process detection ───
+if command -v pgrep >/dev/null 2>&1; then
+    if pgrep -f "claude" >/dev/null 2>&1 || pgrep -x "claude" >/dev/null 2>&1; then
+        echo ""
+        warn "${BOLD}Claude Code appears to be running.${NC}"
+        warn "Restart Claude Code for changes to take effect."
+    fi
+fi
+
+INSTALL_SUCCESS=true
+
 echo ""
-echo -e "${GREEN}Claude Statusline installed successfully!${NC}"
+echo -e "${GREEN}Claude Statusline v${STATUSLINE_VERSION} installed successfully!${NC}"
 echo ""
 echo "  What was installed:"
 echo "    Script:   $script_dest"

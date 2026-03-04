@@ -1,7 +1,9 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Claude Code Statusline — Real-time usage, context, and git info
 # https://github.com/educlopez/claude-statusline
+
+STATUSLINE_VERSION="1.0.0"
 
 # Read JSON input from stdin
 input=$(cat)
@@ -116,7 +118,7 @@ if [ "$mod_usage" = true ]; then
         response=$(curl -s --max-time 5 \
             -H "Authorization: Bearer $access_token" \
             -H "anthropic-beta: oauth-2025-04-20" \
-            -H "User-Agent: claude-statusline/1.0" \
+            -H "User-Agent: claude-statusline/$STATUSLINE_VERSION" \
             "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
 
         [ -z "$response" ] && return 1
@@ -251,8 +253,8 @@ if [ "$mod_git" = true ]; then
         if [ -n "$status_output" ]; then
             total_files=$(echo "$status_output" | wc -l | xargs)
             line_stats=$(git diff --numstat HEAD 2>/dev/null | awk '{added+=$1; removed+=$2} END {print added+0, removed+0}')
-            added=$(echo $line_stats | cut -d' ' -f1)
-            removed=$(echo $line_stats | cut -d' ' -f2)
+            added=$(echo "$line_stats" | cut -d' ' -f1)
+            removed=$(echo "$line_stats" | cut -d' ' -f2)
 
             git_info=" ${YELLOW}($branch${NC} ${YELLOW}|${NC} ${GRAY}${total_files} files${NC}"
             [ "$added" -gt 0 ] && git_info="${git_info} ${GREEN}+${added}${NC}"

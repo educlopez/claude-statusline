@@ -1,8 +1,10 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 # Claude Statusline Uninstaller
 # https://github.com/educlopez/claude-statusline
+
+STATUSLINE_VERSION="1.0.0"
 
 # Colors
 RED='\033[0;31m'

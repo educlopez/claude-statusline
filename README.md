@@ -90,7 +90,7 @@ Remove any module from the array to hide it.
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 - `jq` — JSON processor ([install](https://jqlang.github.io/jq/download/))
 - `curl` — HTTP client (pre-installed on most systems)
-- `bash` 4+ (pre-installed on most systems)
+- `bash` 3.2+ (pre-installed on most systems)
 
 ## How it works
 
