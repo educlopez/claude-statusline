@@ -17,8 +17,7 @@ STATUSLINE_VERSION="1.0.0"
 REPO_URL="https://raw.githubusercontent.com/educlopez/claude-statusline/main"
 SCRIPT_NAME="statusline-command.sh"
 
-# Module definitions (parallel arrays for bash 3 compat)
-MOD_NAMES="directory model context usage git"
+# Module descriptions for interactive menu
 MOD_DESC_1="Directory      my-project"
 MOD_DESC_2="Model          Opus 4.6"
 MOD_DESC_3="Context        ░░░░░░░░░░░░░░░ 12%"

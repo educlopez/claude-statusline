@@ -1,2 +1,2 @@
 shell=bash
-disable=SC2155
+disable=SC2155,SC2034
