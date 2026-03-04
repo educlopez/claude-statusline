@@ -20,6 +20,7 @@ config_dir="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 config_dir="${config_dir/#\~/$HOME}"
 settings_file="$config_dir/settings.json"
 script_file="$config_dir/statusline-command.sh"
+statusline_config="$config_dir/.statusline-config.json"
 cache_dir="$config_dir/.usage-cache"
 
 info "Claude config directory: $config_dir"
@@ -30,6 +31,14 @@ if [ -f "$script_file" ]; then
     ok "Removed $script_file"
 else
     warn "Statusline script not found at $script_file (already removed?)"
+fi
+
+# --- Remove module config ---
+if [ -f "$statusline_config" ]; then
+    rm "$statusline_config"
+    ok "Removed $statusline_config"
+else
+    info "No module config found"
 fi
 
 # --- Remove statusLine key from settings.json ---
