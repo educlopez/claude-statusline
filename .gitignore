@@ -9,3 +9,6 @@
 
 # Windows
 Thumbs.db
+
+# Test libraries (cloned by run_tests.sh)
+test/lib/
