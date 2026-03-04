@@ -2,11 +2,7 @@
 
 A real-time statusline for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that shows usage quota, context window, git status, and more — right in your terminal.
 
-```
-my-project | Opus 4.6 | ░░░░░░░░░░░░░░░ 12% | Max ██████░░░░ 58% 3h42m | (main | 3 files +42 -8)
-   ↑            ↑              ↑                        ↑                         ↑
- folder       model        context %              5h quota + reset            git branch
-```
+![claude-statusline screenshot](assets/screenshot.png)
 
 ## Install
 
