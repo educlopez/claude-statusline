@@ -118,7 +118,7 @@ The installer also respects `CLAUDE_CONFIG_DIR` — run it with the variable set
 | macOS | Supported |
 | Linux | Supported |
 | WSL | Supported |
-| Windows (native) | Not supported |
+| Windows (via Git Bash) | Supported |
 
 ## Uninstall
 
@@ -132,6 +132,3 @@ This removes the statusline script, module config, the `statusLine` key from you
 
 MIT
 
-## Inspired by
-
-- [claude-hud](https://github.com/rysana-ai/claude-hud) — the original Claude Code HUD concept
