@@ -15,12 +15,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
       - name: Run ShellCheck
-        uses: koalaman/shellcheck-action@v1
-        with:
-          version: v0.10.0
-        env:
-          SHELLCHECK_OPTS: ""
+        run: shellcheck *.sh
 
   test:
     name: Run bats tests
